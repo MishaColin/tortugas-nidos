@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getTemporadas, getEspecies, getNidosByTemporada, createNido, updateNido } from './api/nidos';
 import './App.css';
+import logo from './assets/icon_camp_vector.svg'
 
 // ─── Formulario de nido ────────────────────────────────────────────────────
 function NidoForm({ temporadas, especies, temporadaActiva, nidoEditar, onSuccess, onCancel }) {
@@ -23,6 +24,7 @@ function NidoForm({ temporadas, especies, temporadaActiva, nidoEditar, onSuccess
         adoptanteNombre: '',
         adoptanteTelefono: '',
     });
+
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -64,6 +66,7 @@ function NidoForm({ temporadas, especies, temporadaActiva, nidoEditar, onSuccess
         if (Number(form.totalHuevos) < 0) return setError('El total de huevos no puede ser negativo');
         if (form.eclosionado) {
             if (!form.fechaEclosion) return setError('Ingresa la fecha de eclosión');
+            if (form.fechaEclosion < form.fechaRecoleccion) return setError('La fecha de eclosión no puede ser anterior a la fecha de recolección');
             if (form.eclosionesExitosas === '') return setError('Ingresa las eclosiones exitosas');
             if (Number(form.eclosionesExitosas) > Number(form.totalHuevos))
                 return setError('Las eclosiones exitosas no pueden superar el total de huevos');
@@ -338,6 +341,13 @@ export default function App() {
     const [especies, setEspecies] = useState([]);
     const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null);
     const [nidos, setNidos] = useState([]);
+    const [filtros, setFiltros] = useState({
+        busqueda: '',
+        especie: '',
+        estado: '',
+        tipoNido: '',
+        adoptado: '',
+    });
     const [loadingNidos, setLoadingNidos] = useState(false);
     const [mostrarForm, setMostrarForm] = useState(false);
     const [nidoEditar, setNidoEditar] = useState(null);
@@ -369,8 +379,10 @@ export default function App() {
         }
     }, [temporadaSeleccionada]);
 
-    useEffect(() => { cargarNidos(); }, [cargarNidos]);
-
+    useEffect(() => {
+        setFiltros({ busqueda: '', especie: '', estado: '', tipoNido: '', adoptado: '' });
+        cargarNidos();
+    }, [cargarNidos]);
     const handleSuccess = () => {
         setMostrarForm(false);
         setNidoEditar(null);
@@ -385,12 +397,29 @@ export default function App() {
     const eclosionados = nidos.filter(n => n.estado === 'ECLOSIONADO').length;
     const adoptados = nidos.filter(n => n.adoptanteNombre).length;
 
+    const nidosFiltrados = nidos.filter(n => {
+        if (filtros.busqueda && !String(n.codigoNido).includes(filtros.busqueda))
+            return false;
+        if (filtros.especie && n.especieId !== filtros.especie)
+            return false;
+        if (filtros.estado && n.estado !== filtros.estado)
+            return false;
+        if (filtros.tipoNido && n.tipoNido !== filtros.tipoNido)
+            return false;
+        if (filtros.adoptado === 'si' && !n.adoptanteNombre)
+            return false;
+        if (filtros.adoptado === 'no' && n.adoptanteNombre)
+            return false;
+        return true;
+    });
+
+
     return (
         <div className="app">
             {/* Header */}
             <header className="app-header">
                 <div className="header-brand">
-                    <span className="header-icon">🐢</span>
+                    <img src={logo} alt="Logo" className="header-logo" />
                     <div>
                         <h1>Campamento Tortuguero</h1>
                         <p>Registro de Nidos</p>
@@ -451,11 +480,67 @@ export default function App() {
                     </button>
                 </section>
 
+
+                {/* Filtros */}
+                <div className="filtros-row">
+                    <input
+                        type="number"
+                        placeholder="Buscar # nido..."
+                        className="filtro-input"
+                        value={filtros.busqueda}
+                        onChange={e => setFiltros(f => ({ ...f, busqueda: e.target.value }))}
+                    />
+                    <select
+                        className="filtro-select"
+                        value={filtros.especie}
+                        onChange={e => setFiltros(f => ({ ...f, especie: e.target.value }))}
+                    >
+                        <option value="">Todas las especies</option>
+                        {especies.map(e => (
+                            <option key={e.id} value={e.id}>{e.nombre}</option>
+                        ))}
+                    </select>
+                    <select
+                        className="filtro-select"
+                        value={filtros.estado}
+                        onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))}
+                    >
+                        <option value="">Todos los estados</option>
+                        <option value="ACTIVO">Activo</option>
+                        <option value="ECLOSIONADO">Eclosionado</option>
+                    </select>
+                    <select
+                        className="filtro-select"
+                        value={filtros.tipoNido}
+                        onChange={e => setFiltros(f => ({ ...f, tipoNido: e.target.value }))}
+                    >
+                        <option value="">Todos los tipos</option>
+                        <option value="IN_SITU">In Situ</option>
+                        <option value="CORRAL">Corral</option>
+                    </select>
+                    <select
+                        className="filtro-select"
+                        value={filtros.adoptado}
+                        onChange={e => setFiltros(f => ({ ...f, adoptado: e.target.value }))}
+                    >
+                        <option value="">Adopción: todos</option>
+                        <option value="si">Adoptados</option>
+                        <option value="no">No adoptados</option>
+                    </select>
+                    {Object.values(filtros).some(v => v !== '') && (
+                        <button
+                            className="btn-secondary"
+                            onClick={() => setFiltros({ busqueda: '', especie: '', estado: '', tipoNido: '', adoptado: '' })}
+                        >
+                            Limpiar filtros
+                        </button>
+                    )}
+                </div>
                 {/* Tabla */}
                 {loadingNidos ? (
                     <div className="loading">Cargando nidos...</div>
                 ) : (
-                    <NidoTable nidos={nidos} onEditar={handleEditar} />
+                    <NidoTable nidos={nidosFiltrados} onEditar={handleEditar} />
                 )}
             </main>
 
